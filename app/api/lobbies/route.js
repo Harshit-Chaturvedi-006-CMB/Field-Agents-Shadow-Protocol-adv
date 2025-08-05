@@ -2,7 +2,13 @@
 import clientPromise from "@/lib/mongodb";
 import { nanoid } from "nanoid";
 
-const roleTasksMap = { ... }; // same as before
+const roleTasksMap = {
+  scientist: ['task1', 'task2'],
+  explorer: ['task3', 'task4'],
+  deviation: ['task5', 'task6'],
+  engineer: ['task7', 'task8']
+};
+
 const roles = ['scientist', 'explorer', 'deviation', 'engineer'];
 
 function getRandomTasks(role) {
