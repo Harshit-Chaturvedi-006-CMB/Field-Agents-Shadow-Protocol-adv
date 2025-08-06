@@ -6,7 +6,7 @@ import { io } from 'socket.io-client';
 const SOCKET_URL = 'https://server-field-agents.onrender.com';
 
 import Reveal from './Reveal';  // Adjust path
-import Game from '@/components/game';     // Adjust path
+import Game from './game';     // Adjust path
 import ChatBox from './ChatBox';
 
 export default function Joinlobby() {
