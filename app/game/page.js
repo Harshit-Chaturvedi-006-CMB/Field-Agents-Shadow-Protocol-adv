@@ -9,11 +9,19 @@ const SOCKET_URL = 'https://server-field-agents.onrender.com'; // Your socket se
 
 export default function GamePage() {
   const lobbyCode = 'ABC123';     // replace with actual lobby code from props/state
-  const playerId = 'player1';     // replace with actual user ID
   const username = 'Agent Smith'; // replace with actual user name
 
   const [players, setPlayers] = useState([]);
   const socketRef = useRef(null);
+
+  const [playerId, setPlayerId] = useState(null);
+
+useEffect(() => {
+  if (typeof window !== 'undefined') {
+    const storedId = localStorage.getItem('fieldAgentsId');
+    setPlayerId(storedId || 'defaultPlayerId');
+  }
+}, []);
 
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ['websocket'] });
