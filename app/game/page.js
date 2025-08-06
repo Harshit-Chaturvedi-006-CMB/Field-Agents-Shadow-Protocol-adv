@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
+import ShowCord from '@/components/showcord';
 
 const SOCKET_URL = 'https://server-field-agents.onrender.com'; // Your socket server URL
 
@@ -77,6 +78,11 @@ export default function GamePage() {
 
   return (
     <div>
+      <ShowCord 
+  lobbyCode={lobbyCode} 
+  playerId={playerId} 
+  playerName={username} 
+/>
       <h1>Game Page</h1>
       {/* Render player list or game UI here */}
     </div>
