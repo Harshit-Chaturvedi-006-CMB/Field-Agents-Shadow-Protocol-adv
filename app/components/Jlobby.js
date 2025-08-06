@@ -20,9 +20,13 @@ export default function Joinlobby() {
     ? (JSON.parse(localStorage.getItem('fieldAgentsUser'))?.username || 'Agent') 
     : 'Agent';
 
-  const playerId = typeof window !== 'undefined' 
-    ? localStorage.getItem('fieldAgentsId') || username 
-    : username;
+const [playerId, setPlayerId] = useState();
+
+useEffect(() => {
+  if (typeof window !== 'undefined') {
+    setPlayerId(localStorage.getItem('fieldAgentsId')); // ✅
+  }
+}, []);
 
   // Persistent socket instance across component lifetime
   const socketRef = useRef(null);
