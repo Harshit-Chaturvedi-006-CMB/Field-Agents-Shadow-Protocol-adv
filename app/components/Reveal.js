@@ -10,45 +10,37 @@ export default function Reveal({ lobbyCode, playerId }) {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ['websocket'] });
+  const socket = io(SOCKET_URL, { transports: ['websocket'] });
 
-    socket.emit('joinLobby', { lobbyCode, player: { id: playerId } });
+  console.log('Reveal: joining lobby', lobbyCode);
 
-    // Listen for revealRoles event and get your role
-    socket.on('revealRoles', ({ roles }) => {
-      const myRole = roles.find(r => r.id === playerId);
-      setRole(myRole ? myRole.role : '');
-      setShow(true);
+  socket.emit('joinLobby', { lobbyCode, player: { id: playerId } });
 
-      // After delay, signal reveal done
-      setTimeout(() => {
-        socket.emit('revealDone', { lobbyCode });
-      }, 2500); // 2.5s, can adjust to match animation
-    });
+  socket.on('connect', () => {
+    console.log('Reveal socket connected:', socket.id);
+  });
 
-    // Listen for goToGame event to route to /game
-    socket.on('goToGame', () => {
-      router.push('/game');
-    });
+  socket.on('revealRoles', ({ roles }) => {
+    console.log('RevealRoles received:', roles);
+    const myRole = roles.find(r => r.id === playerId);
+    setRole(myRole ? myRole.role : '');
+    setShow(true);
 
-    return () => socket.disconnect();
-  }, [lobbyCode, playerId, router]);
+    setTimeout(() => {
+      socket.emit('revealDone', { lobbyCode });
+    }, 2500);
+  });
 
-  return (
-    <div style={{
-      background: 'black',
-      color: '#f5e952',
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      transition: 'opacity 0.6s',
-      fontFamily: 'monospace',
-      fontWeight: 'bold',
-      fontSize: '6vw',
-      letterSpacing: 8
-    }}>
-      {show ? <span style={{ fontSize: 72 }}>{role.toUpperCase()}</span> : null}
-    </div>
-  );
+  socket.on('goToGame', () => {
+    console.log('GoToGame received; routing');
+    router.push('/game');
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Socket disconnected');
+  });
+
+  return () => socket.disconnect();
+}, [lobbyCode, playerId, router]);
+    
 }
