@@ -1,11 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { nanoid } from 'nanoid';
-import dynamic from 'next/dynamic';
-
-// const PhaseMapInner = dynamic(() => import('./PhasorMap.js'), { ssr: false });
+import ChatBox from './ChatBox';
 
 const SOCKET_URL = 'https://server-field-agents.onrender.com'; // your deployed server in production
 
@@ -15,62 +13,75 @@ export default function Lobby() {
   const [started, setStarted] = useState(false);
 
   const username = typeof window !== 'undefined'
-    ? (localStorage.getItem('fieldAgentsUser') || 'Agent')
+    ? (JSON.parse((localStorage.getItem('fieldAgentsUser'))).username || 'Agent')
     : 'Agent';
 
-    const myPlayerId = typeof window !== 'undefined' 
-  ? localStorage.getItem('fieldAgentsId') || null 
-  : null;
+  const playerId = typeof window !== 'undefined'
+    ? localStorage.getItem('fieldAgentsId') || username
+    : username;
 
+  const socketRef = useRef(null);
 
-//     useEffect(() => {
-//   let socket = io(SOCKET_URL);
-//   let watcherId;
-
-//   if ("geolocation" in navigator) {
-//     watcherId = navigator.geolocation.watchPosition(
-//       (position) => {
-//         socket.emit('playerMove', {
-//           lobbyCode,
-//           player: { id: myPlayerId, name: username }, // include your unique playerId!
-//           coordinates: {
-//             lat: position.coords.latitude,
-//             long: position.coords.longitude,
-//           },
-//         });
-//       },
-//       (error) => console.error(error),
-//       { enableHighAccuracy: true }
-//     );
-//   }
-
-//   return () => {
-//     if (watcherId) navigator.geolocation.clearWatch(watcherId);
-//     socket.disconnect();
-//   };
-// }, [lobbyCode, myPlayerId, username]);
-
+  // Initialize lobby code once on mount
   useEffect(() => {
-    // Generate a new code on mount
     const code = nanoid(6).toUpperCase();
     setLobbyCode(code);
+  }, []);
 
+  useEffect(() => {
+    if (!lobbyCode || !playerId || !username) return;
+
+    // Create single socket instance and store in ref
     const socket = io(SOCKET_URL, { transports: ['websocket'] });
+    socketRef.current = socket;
 
+    // Upon connection, create lobby with current player info
     socket.on('connect', () => {
-      socket.emit('createLobby', { lobbyCode: code, player: { name: username } });
+      socket.emit('createLobby', { lobbyCode, player: { id: playerId, name: username } });
     });
 
+    // Update players list on lobby updates
     socket.on('lobbyUpdate', (lobby) => {
       setPlayers(lobby.players || []);
     });
 
-    // Clean up socket on unmount
+    // Listen for moving players and log coordinates
+    socket.on('playerMoved', (data) => {
+      console.log(`[From playerMoved] Player ${data.player.name} moved to:`, data.coordinates);
+    });
+
+    // Start geolocation watcher and emit position updates
+    let watcherId;
+    if ('geolocation' in navigator) {
+      watcherId = navigator.geolocation.watchPosition(
+        (position) => {
+          if (socketRef.current.connected) {
+            socketRef.current.emit('playerMove', {
+              lobbyCode,
+              player: { id: playerId, name: username },
+              coordinates: {
+                lat: position.coords.latitude,
+                long: position.coords.longitude,
+              },
+            });
+          }
+        },
+        (error) => console.error('Geolocation error:', error),
+        { enableHighAccuracy: true }
+      );
+    }
+
+    // Clean up watcher and socket on unmount
     return () => {
-      socket.emit('leaveLobby', { lobbyCode: code, playerId: username });
-      socket.disconnect();
+      if (watcherId) navigator.geolocation.clearWatch(watcherId);
+      if (socketRef.current) {
+        socketRef.current.emit('leaveLobby', { lobbyCode, playerId });
+        socketRef.current.disconnect();
+      }
     };
-  }, [username]);
+  }, [lobbyCode, playerId, username]);
+
+  // You don't need to define sendMessage or setMessages here — ChatBox handles chat
 
   return (
     <div style={styles.container}>
@@ -78,6 +89,9 @@ export default function Lobby() {
         <h1>Lobby</h1>
         <div style={styles.playerCount}>{players.length} / 10</div>
       </header>
+
+      {/* Pass current lobby info and user info to ChatBox */}
+      <ChatBox lobbyCode={lobbyCode} username={username} playerId={playerId} />
 
       <div style={styles.lobbyCodeContainer}>
         <span style={styles.lobbyCodeLabel}>Lobby Code:</span>
@@ -88,7 +102,8 @@ export default function Lobby() {
         <div style={{ marginBottom: 20 }}>Share this code with your friends so they can join!</div>
         <ul style={styles.playerList}>
           {players.map((p, i) => (
-            <li key={i} style={styles.playerItem}>{(JSON.parse(p.name).username)}</li>
+            // p.name is a plain string — no JSON.parse needed
+            <li key={i} style={styles.playerItem}>{p.name}</li>
           ))}
         </ul>
       </div>
@@ -104,7 +119,7 @@ export default function Lobby() {
       >
         Start Game
       </button>
-      {/* <PhaseMap/> */}
+
       {started && (
         <div style={styles.startedPanel}>
           <h2>Game Started!</h2>
@@ -113,6 +128,7 @@ export default function Lobby() {
     </div>
   );
 }
+
 
 const styles = {
   container: {
@@ -129,7 +145,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 40
+    marginBottom: 40,
   },
   playerCount: {
     backgroundColor: '#222e44',
@@ -138,13 +154,13 @@ const styles = {
     borderRadius: 18,
     fontWeight: '600',
     fontSize: 18,
-    letterSpacing: 2
+    letterSpacing: 2,
   },
   lobbyCodeContainer: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 40
+    marginBottom: 40,
   },
   lobbyCodeLabel: { fontSize: 20, marginRight: 10 },
   lobbyCode: {
@@ -154,20 +170,24 @@ const styles = {
     backgroundColor: '#2a3042',
     padding: '14px 36px',
     borderRadius: 12,
-    fontFamily: "'Courier New', Courier, monospace"
+    fontFamily: "'Courier New', Courier, monospace",
   },
   infoBox: {
     background: '#131b2b',
     borderRadius: 10,
     padding: 24,
-    marginBottom: 32
+    marginBottom: 32,
   },
   playerList: {
     listStyle: 'none',
     margin: 0,
-    padding: 0
+    padding: 0,
   },
-  playerItem: { padding: '8px 0', fontSize: 19, borderBottom: '1px solid #21304b' },
+  playerItem: {
+    padding: '8px 0',
+    fontSize: 19,
+    borderBottom: '1px solid #21304b',
+  },
   startButton: {
     display: 'block',
     fontSize: 22,
@@ -179,13 +199,13 @@ const styles = {
     border: 'none',
     margin: '46px auto 0 auto',
     userSelect: 'none',
-    transition: 'background 0.2s'
+    transition: 'background 0.2s',
   },
   startedPanel: {
     marginTop: 50,
     textAlign: 'center',
     background: '#178277',
     padding: 36,
-    borderRadius: 24
-  }
+    borderRadius: 24,
+  },
 };

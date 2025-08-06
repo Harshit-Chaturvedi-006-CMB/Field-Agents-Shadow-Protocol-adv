@@ -3,11 +3,36 @@ import clientPromise from "@/lib/mongodb";
 import { nanoid } from "nanoid";
 
 const roleTasksMap = {
-  scientist: ['task1', 'task2'],
-  explorer: ['task3', 'task4'],
-  deviation: ['task5', 'task6'],
-  engineer: ['task7', 'task8']
+  scientist: [
+    "Collect soil sample at target location",
+    "Measure radiation at landmark",
+    "Upload bio readings near the coordinates",
+    "Scan plants at specified way-point",
+    "Photograph water body within target radius"
+  ],
+  explorer: [
+    "Reach the old tower ruins",
+    "Visit the bridge overpass checkpoint",
+    "Check in at the forest edge marker",
+    "Find the hidden statue geo-point",
+    "Scout the abandoned vehicle site"
+  ],
+  deviation: [
+    "Deliver secret cache to rendezvous point",
+    "Surveil the eastern outpost boundary",
+    "Intercept a marked container at hotspot",
+    "Drop a beacon at the mysterious signal",
+    "Meet ally at the south trail junction"
+  ],
+  engineer: [
+    "Repair field station at specified location",
+    "Inspect the malfunctioning sensor node",
+    "Install relay device at signal tower",
+    "Replace battery at checkpoint",
+    "Calibrate antenna at hilltop position"
+  ]
 };
+
 
 const roles = ['scientist', 'explorer', 'deviation', 'engineer'];
 

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import ChatBox from './ChatBox';
 
-const SOCKET_URL = 'http://localhost:4000'; // use your server URL in production
+const SOCKET_URL = 'https://server-field-agents.onrender.com'; // use your server URL in production
 
 export default function Joinlobby() {
   const [inputLobbyCode, setInputLobbyCode] = useState('');
@@ -11,8 +12,10 @@ export default function Joinlobby() {
   const [players, setPlayers] = useState([]);
 
   const username = typeof window !== 'undefined'
-    ? (localStorage.getItem('fieldAgentsUser') || 'Agent')
+    ? (JSON.parse((localStorage.getItem('fieldAgentsUser'))).username|| 'Agent')
     : 'Agent';
+
+    const playerId = typeof window !== 'undefined' ? localStorage.getItem('fieldAgentsId') || username : username;
 
   useEffect(() => {
     let socket;
@@ -31,7 +34,7 @@ export default function Joinlobby() {
 
       // Clean up on unmount
       return () => {
-        socket.emit('leaveLobby', { lobbyCode: joinedLobbyCode, playerId: username });
+        socket.emit('leaveLobby', { lobbyCode: joinedLobbyCode, playerId: playerId });
         socket.disconnect();
       };
     }
@@ -52,6 +55,8 @@ export default function Joinlobby() {
           <h1>Lobby</h1>
           <div style={styles.playerCount}>{players.length} / 10</div>
         </header>
+              <ChatBox lobbyCode={joinedLobbyCode} username={username} playerId={username} />
+        
         <div style={styles.lobbyCodeContainer}>
           <span style={styles.lobbyCodeLabel}>Lobby Code:</span>
           <span style={styles.lobbyCode}>{joinedLobbyCode}</span>
@@ -60,7 +65,7 @@ export default function Joinlobby() {
           <div style={{ marginBottom: 20 }}>Players in Lobby:</div>
           <ul style={styles.playerList}>
             {players.map((p, i) => (
-              <li key={i} style={styles.playerItem}>{(JSON.parse(p.name).username)}</li>
+              <li key={i} style={styles.playerItem}>{username}</li>
             ))}
           </ul>
         </div>
