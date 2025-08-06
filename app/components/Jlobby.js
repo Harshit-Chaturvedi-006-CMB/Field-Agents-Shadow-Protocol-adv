@@ -1,46 +1,73 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-import ChatBox from './ChatBox';
 
-const SOCKET_URL = 'https://server-field-agents.onrender.com'; // use your server URL in production
+// You can replace with your actual backend URL
+const SOCKET_URL = 'https://server-field-agents.onrender.com';
+
+import Reveal from './Reveal';  // Your Reveal component (adjust path)
+import Game from './Game';      // Your Game component (adjust path)
+import ChatBox from './ChatBox';
 
 export default function Joinlobby() {
   const [inputLobbyCode, setInputLobbyCode] = useState('');
   const [joinedLobbyCode, setJoinedLobbyCode] = useState('');
   const [players, setPlayers] = useState([]);
+  const [currentScreen, setCurrentScreen] = useState('join'); // 'join' | 'lobby' | 'reveal' | 'game'
+  const [myRole, setMyRole] = useState(null);
 
   const username = typeof window !== 'undefined'
-    ? (JSON.parse((localStorage.getItem('fieldAgentsUser'))).username|| 'Agent')
+    ? (JSON.parse(localStorage.getItem('fieldAgentsUser'))?.username || 'Agent')
     : 'Agent';
 
-    const playerId = typeof window !== 'undefined' ? localStorage.getItem('fieldAgentsId') || username : username;
+  const playerId = typeof window !== 'undefined'
+    ? localStorage.getItem('fieldAgentsId') || username
+    : username;
+
+  const socketRef = useRef(null);
 
   useEffect(() => {
-    let socket;
-    if (joinedLobbyCode) {
-      socket = io(SOCKET_URL, { transports: ['websocket'] });
-      socket.on('connect', () => {
-        socket.emit('joinLobby', {
-          lobbyCode: joinedLobbyCode,
-          player: { name: username },
-        });
+    if (!joinedLobbyCode) return;
+
+    const socket = io(SOCKET_URL, { transports: ['websocket'] });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log(`Socket connected: ${socket.id}`);
+      socket.emit('joinLobby', {
+        lobbyCode: joinedLobbyCode,
+        player: { id: playerId, name: username }
       });
+    });
 
-      socket.on('lobbyUpdate', (lobby) => {
-        setPlayers(lobby.players || []);
-      });
+    socket.on('lobbyUpdate', (lobby) => {
+      setPlayers(lobby.players || []);
+      if (currentScreen !== 'lobby') setCurrentScreen('lobby'); // Show lobby screen
+    });
 
-      // Clean up on unmount
-      return () => {
-        socket.emit('leaveLobby', { lobbyCode: joinedLobbyCode, playerId: playerId });
-        socket.disconnect();
-      };
-    }
-  }, [joinedLobbyCode, username]);
+    socket.on('revealRoles', ({ roles }) => {
+      const roleObj = roles.find(r => r.id === playerId);
+      setMyRole(roleObj || { role: 'Agent', task: 'No task assigned' });
+      setCurrentScreen('reveal');
+      console.log('Received revealRoles:', roleObj);
+    });
 
-  const handleJoin = () => {
+    socket.on('goToGame', () => {
+      setCurrentScreen('game');
+      console.log('Received goToGame, switching to game screen');
+    });
+
+    // OPTIONAL: Handle disconnect, errors, etc.
+
+    return () => {
+      socket.emit('leaveLobby', { lobbyCode: joinedLobbyCode, playerId });
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [joinedLobbyCode, playerId, username]);
+
+  const handleJoinClick = () => {
     if (!/^[A-Z0-9]{6}$/.test(inputLobbyCode)) {
       alert('Please enter a valid 6-character lobby code.');
       return;
@@ -48,19 +75,47 @@ export default function Joinlobby() {
     setJoinedLobbyCode(inputLobbyCode.toUpperCase());
   };
 
-  if (joinedLobbyCode) {
+  const handleLeaveLobby = () => {
+    setJoinedLobbyCode('');
+    setPlayers([]);
+    setCurrentScreen('join');
+  };
+
+  // Render join lobby input form
+  if (currentScreen === 'join') {
+    return (
+      <div style={styles.container}>
+        <h1>Join a Lobby</h1>
+        <input
+          type="text"
+          value={inputLobbyCode}
+          onChange={e => setInputLobbyCode(e.target.value.toUpperCase())}
+          placeholder="Enter Lobby Code"
+          maxLength={6}
+          style={styles.input}
+          autoFocus
+        />
+        <button onClick={handleJoinClick} style={styles.joinButton}>Join Lobby</button>
+      </div>
+    );
+  }
+
+  // Render lobby screen before game starts
+  if (currentScreen === 'lobby') {
     return (
       <div style={styles.container}>
         <header style={styles.header}>
           <h1>Lobby</h1>
           <div style={styles.playerCount}>{players.length} / 10</div>
         </header>
-              <ChatBox lobbyCode={joinedLobbyCode} username={username} playerId={username} />
-        
+
+        <ChatBox lobbyCode={joinedLobbyCode} username={username} playerId={playerId} />
+
         <div style={styles.lobbyCodeContainer}>
           <span style={styles.lobbyCodeLabel}>Lobby Code:</span>
           <span style={styles.lobbyCode}>{joinedLobbyCode}</span>
         </div>
+
         <div style={styles.infoBox}>
           <div style={{ marginBottom: 20 }}>Players in Lobby:</div>
           <ul style={styles.playerList}>
@@ -69,37 +124,42 @@ export default function Joinlobby() {
             ))}
           </ul>
         </div>
-        <button
-          style={styles.leaveButton}
-          onClick={() => {
-            setJoinedLobbyCode('');
-            setPlayers([]);
-          }}
-        >
-          Leave Lobby
-        </button>
+
+        <button style={styles.leaveButton} onClick={handleLeaveLobby}>Leave Lobby</button>
       </div>
     );
   }
 
-  return (
-    <div style={styles.container}>
-      <h1>Join a Lobby</h1>
-      <input
-        type="text"
-        value={inputLobbyCode}
-        onChange={e => setInputLobbyCode(e.target.value.toUpperCase())}
-        placeholder="Enter Lobby Code"
-        maxLength={6}
-        style={styles.input}
+  // Render Reveal component in reveal phase
+  if (currentScreen === 'reveal') {
+    return (
+      <Reveal
+        lobbyCode={joinedLobbyCode}
+        playerId={playerId}
+        role={myRole?.role}
+        task={myRole?.task}
+        socket={socketRef.current}
       />
-      <button onClick={handleJoin} style={styles.joinButton}>
-        Join Lobby
-      </button>
-    </div>
-  );
+    );
+  }
+
+  // Render Game component
+  if (currentScreen === 'game') {
+    return (
+      <Game
+        lobbyCode={joinedLobbyCode}
+        playerId={playerId}
+        username={username}
+        socket={socketRef.current}
+      />
+    );
+  }
+
+  // Fallback (should not happen)
+  return null;
 }
 
+// Styles - same as your existing
 const styles = {
   container: {
     minHeight: '100vh',
@@ -217,10 +277,5 @@ const styles = {
     width: '100%',
     maxWidth: 360,
     userSelect: 'none',
-  },
-  error: {
-    color: '#ff6b6b',
-    marginBottom: 16,
-    fontWeight: '600',
   },
 };
