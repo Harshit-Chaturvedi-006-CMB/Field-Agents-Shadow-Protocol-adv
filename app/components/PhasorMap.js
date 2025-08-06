@@ -1,92 +1,107 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-
-// You'll need to install these dependencies:
-// npm install react-leaflet leaflet
-// Also, add Leaflet CSS in your root layout or _app.js:
-// import 'leaflet/dist/leaflet.css';
-
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle } from 'react-leaflet';
 import L from 'leaflet';
+import { io } from 'socket.io-client';
 
-// Fix default marker icon issue with webpack:
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+const SOCKET_URL = 'https://server-field-agents.onrender.com';
+
+// Optional: Custom marker style (a yellow dot)
+const playerIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.4/images/marker-shadow.png',
+  shadowSize: [41, 41]
 });
 
-export default function PhaseMap({ players }) {
-  // players is an array of objects with structure like:
-  // { playerName: 'Alice', coordinates: { lat: 12.34, long: 56.78 } }
+export default function PlayerMap({ lobbyCode, playerId, playerName }) {
+  const [myCoords, setMyCoords] = useState(null);
+  const socketRef = useRef();
 
-  const [userLocation, setUserLocation] = useState(null);
-
+  // Initiate geolocation and socket connection
   useEffect(() => {
-    if (!navigator.geolocation) {
-      console.error('Geolocation is not supported by your browser');
-      return;
-    }
-    const watcherId = navigator.geolocation.watchPosition(
-      (position) => {
-        setUserLocation({
-          lat: position.coords.latitude,
-          long: position.coords.longitude,
-        });
-      },
-      (error) => console.error('Geolocation error:', error),
-      {
-        enableHighAccuracy: true,
-        maximumAge: 10000,
-        timeout: 10000,
-      }
-    );
-    return () => navigator.geolocation.clearWatch(watcherId);
-  }, []);
+    const socket = io(SOCKET_URL, { transports: ['websocket'] });
+    socketRef.current = socket;
+    socket.emit('joinLobby', { lobbyCode, player: { id: playerId, name: playerName } });
 
-  // Default center on user location if available or else fallback coordinates
-  const center = userLocation
-    ? [userLocation.lat, userLocation.long]
-    : players.length > 0 && players[0].coordinates
-    ? [players[0].coordinates.lat, players[0].coordinates.long]
-    : [0, 0];
+    // Watch geolocation
+    let watchId;
+    if ('geolocation' in navigator) {
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const coords = {
+            lat: position.coords.latitude,
+            long: position.coords.longitude
+          };
+          setMyCoords(coords); // Update local state (for marker movement)
+          socket.emit('playerMove', {
+            lobbyCode,
+            player: { id: playerId, name: playerName },
+            coordinates: coords
+          });
+        },
+        (err) => console.error('Geolocation error:', err),
+        { enableHighAccuracy: true }
+      );
+    } else {
+      console.warn('Geolocation not available.');
+    }
+
+    // Optionally update from server echo (if needed)
+    socket.on('playerMoved', ({ player, coordinates }) => {
+      if (player.id === playerId) {
+        setMyCoords(coordinates);
+      }
+    });
+
+    return () => {
+      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
+      socket.disconnect();
+    };
+  }, [lobbyCode, playerId, playerName]);
+
+  // Don't render map until we have a position
+  if (!myCoords) {
+    return (
+      <div style={{ color: '#aaa', fontFamily: 'monospace', textAlign: 'center', marginTop: 40 }}>
+        Getting your location…
+      </div>
+    );
+  }
 
   return (
-    <div style={{ height: '500px', width: '100%', marginTop: 24 }}>
-      <MapContainer center={center} zoom={15} scrollWheelZoom style={{ height: 500 }}>
-  <TileLayer
-    attribution='&copy; OpenStreetMap contributors'
-    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-  />
-
-  {/* All player markers */}
-  {players.map((player, idx) => (
-    player.coordinates ? (
-      <Marker key={player.id} position={[player.coordinates.lat, player.coordinates.long]}>
-        <Popup>{player.name}</Popup>
-      </Marker>
-    ) : null
-  ))}
-
-  {/* Objective markers and radius circles */}
-  {objectives.map((obj, i) => (
-    <Marker key={i} position={[obj.lat, obj.long]}>
-      <Popup>Objective: {obj.label}</Popup>
-    </Marker>
-  ))}
-  {objectives.map((obj, i) => (
-    <Circle
-      key={i}
-      center={[obj.lat, obj.long]}
-      radius={obj.radius} // in meters
-      pathOptions={{ color: '#2196F3', fillOpacity: 0.2 }}
-    />
-  ))}
-</MapContainer>
-
+    <div style={{ height: 420, width: '100%', margin: '0 auto', maxWidth: 600 }}>
+      <MapContainer
+        center={[myCoords.lat, myCoords.long]}
+        zoom={17}
+        scrollWheelZoom={true}
+        style={{ height: '100%', width: '100%', borderRadius: 14 }}
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; OpenStreetMap contributors'
+        />
+        <Marker
+          position={[myCoords.lat, myCoords.long]}
+          icon={playerIcon}
+        />
+        <Circle
+          center={[myCoords.lat, myCoords.long]}
+          radius={12}
+          pathOptions={{ fillColor: 'yellow', fillOpacity: 0.2, color: '#e7e91d' }}
+        />
+      </MapContainer>
+      <div style={{ 
+        color: '#f5e952', fontFamily: 'monospace', marginTop: 10, textAlign: 'center', letterSpacing: 2
+      }}>
+        {playerName}: 
+        <span style={{ color: '#fff' }}> 
+          {myCoords.lat.toFixed(5)}, {myCoords.long.toFixed(5)}
+        </span>
+      </div>
     </div>
   );
 }
