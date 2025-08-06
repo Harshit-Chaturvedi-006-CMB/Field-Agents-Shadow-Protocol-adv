@@ -1,33 +1,24 @@
-'use client';
-
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { io } from 'socket.io-client';
 
 const SOCKET_URL = 'https://server-field-agents.onrender.com';
 
-export default function Reveal({ lobbyCode, playerId, socket: passedSocket }) {
+export default function RevealPage({ lobbyCode, playerId }) {
   const router = useRouter();
   const [role, setRole] = useState('');
+  const [task, setTask] = useState('');
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    if (!lobbyCode || !playerId) return;
-
-    const socket = passedSocket || io(SOCKET_URL, { transports: ['websocket'] });
-
-    console.log('Reveal: joining lobby', lobbyCode);
+    const socket = io(SOCKET_URL, { transports: ['websocket'] });
 
     socket.emit('joinLobby', { lobbyCode, player: { id: playerId } });
 
-    socket.on('connect', () => {
-      console.log('Reveal socket connected:', socket.id);
-    });
-
     socket.on('revealRoles', ({ roles }) => {
-      console.log('RevealRoles received:', roles);
-      const myRole = roles.find(r => r.id === playerId);
-      setRole(myRole ? myRole.role : 'Unknown Role');
+      const me = roles.find(r => r.id === playerId);
+      setRole(me?.role || 'Agent');
+      setTask(me?.task || 'No task');
       setShow(true);
 
       setTimeout(() => {
@@ -36,38 +27,38 @@ export default function Reveal({ lobbyCode, playerId, socket: passedSocket }) {
     });
 
     socket.on('goToGame', () => {
-      console.log('GoToGame received; routing');
       router.push('/game');
     });
 
-    socket.on('disconnect', () => {
-      console.log('Socket disconnected');
-    });
-
     return () => {
-      socket.off('revealRoles');
-      socket.off('goToGame');
-      socket.off('disconnect');
-      if (!passedSocket) socket.disconnect();
+      socket.disconnect();
     };
-  }, [lobbyCode, playerId, router, passedSocket]);
+  }, [lobbyCode, playerId, router]);
 
   return (
-    <div
-      style={{
-        background: 'black',
-        color: '#f5e952',
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'monospace',
-        fontWeight: 'bold',
-        fontSize: '6vw',
-        letterSpacing: 8,
-      }}
-    >
-      {show ? <span style={{ fontSize: 72 }}>{role.toUpperCase()}</span> : <span>Waiting for role...</span>}
+    <div style={{
+      background: 'black',
+      color: '#f5e952',
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      fontSize: '3vw',
+      fontFamily: 'monospace',
+      fontWeight: 'bold',
+      letterSpacing: 6
+    }}>
+      {show ? (
+        <>
+          <div style={{ fontSize: '5vw' }}>
+            {role.toUpperCase()}
+          </div>
+          <div style={{ marginTop: 40, color: '#fff78e', fontSize: '2.5vw' }}>
+            Task: {task}
+          </div>
+        </>
+      ) : <span>Waiting for assignment...</span>}
     </div>
   );
 }
