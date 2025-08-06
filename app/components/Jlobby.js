@@ -3,11 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// You can replace with your actual backend URL
 const SOCKET_URL = 'https://server-field-agents.onrender.com';
 
-import Reveal from './Reveal';  // Your Reveal component (adjust path)
-import Game from './game';      // Your Game component (adjust path)
+import Reveal from './Reveal';  // Adjust path
+// import Game from './game';      // Adjust path
 import ChatBox from './ChatBox';
 
 export default function Joinlobby() {
@@ -17,71 +16,116 @@ export default function Joinlobby() {
   const [currentScreen, setCurrentScreen] = useState('join'); // 'join' | 'lobby' | 'reveal' | 'game'
   const [myRole, setMyRole] = useState(null);
 
-  const username = typeof window !== 'undefined'
-    ? (JSON.parse(localStorage.getItem('fieldAgentsUser'))?.username || 'Agent')
+  const username = typeof window !== 'undefined' 
+    ? (JSON.parse(localStorage.getItem('fieldAgentsUser'))?.username || 'Agent') 
     : 'Agent';
 
-  const playerId = typeof window !== 'undefined'
-    ? localStorage.getItem('fieldAgentsId') || username
+  const playerId = typeof window !== 'undefined' 
+    ? localStorage.getItem('fieldAgentsId') || username 
     : username;
 
+  // Persistent socket instance across component lifetime
   const socketRef = useRef(null);
 
+  // Initialize socket once on mount only
   useEffect(() => {
-    if (!joinedLobbyCode) return;
-
+    console.log('Initializing socket connection...');
     const socket = io(SOCKET_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log(`Socket connected: ${socket.id}`);
-      socket.emit('joinLobby', {
-        lobbyCode: joinedLobbyCode,
-        player: { id: playerId, name: username }
-      });
+      console.log('Socket connected:', socket.id);
     });
 
-    socket.on('lobbyUpdate', (lobby) => {
-      setPlayers(lobby.players || []);
-      if (currentScreen !== 'lobby') setCurrentScreen('lobby'); // Show lobby screen
+    socket.on('disconnect', () => {
+      console.warn('Socket disconnected');
     });
 
-    socket.on('revealRoles', ({ roles }) => {
-      const roleObj = roles.find(r => r.id === playerId);
-      setMyRole(roleObj || { role: 'Agent', task: 'No task assigned' });
-      setCurrentScreen('reveal');
-      console.log('Received revealRoles:', roleObj);
-    });
+    // Optional: handle general socket errors here
 
-    socket.on('goToGame', () => {
-      setCurrentScreen('game');
-      console.log('Received goToGame, switching to game screen');
-    });
-
-    // OPTIONAL: Handle disconnect, errors, etc.
-
+    // Cleanup on unmount
     return () => {
-      socket.emit('leaveLobby', { lobbyCode: joinedLobbyCode, playerId });
+      console.log('Disconnecting socket on unmount...');
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [joinedLobbyCode, playerId, username]);
+  }, []); // empty deps → run once
 
+  // Handle lobby join/leaves dynamically
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    // If no lobby code, leave all rooms and reset states
+    if (!joinedLobbyCode) {
+      console.log('No joinedLobbyCode, clearing players & resetting screen...');
+      setPlayers([]);
+      setMyRole(null);
+      setCurrentScreen('join');
+      socket.emit('leaveLobby', { lobbyCode: '', playerId });
+      return;
+    }
+
+    // Join the lobby room
+    console.log(`Joining lobby: ${joinedLobbyCode} as player ${playerId}`);
+    socket.emit('joinLobby', { lobbyCode: joinedLobbyCode, player: { id: playerId, name: username } });
+
+    // Setup event listeners for lobby lifecycle
+    const onLobbyUpdate = (lobby) => {
+      console.log('Lobby update received:', lobby);
+      setPlayers(lobby.players || []);
+      if (currentScreen !== 'lobby') setCurrentScreen('lobby');
+    };
+
+    const onRevealRoles = ({ roles }) => {
+      console.log('Reveal roles received:', roles);
+      const roleObj = roles.find(r => r.id === playerId);
+      setMyRole(roleObj || { role: 'Agent', task: 'No task assigned' });
+      setCurrentScreen('reveal');
+    };
+
+    const onGoToGame = () => {
+      console.log('goToGame event received, switching to game screen');
+      setCurrentScreen('game');
+    };
+
+    socket.on('lobbyUpdate', onLobbyUpdate);
+    socket.on('revealRoles', onRevealRoles);
+    socket.on('goToGame', onGoToGame);
+
+    // Cleanup when lobbyCode or playerId changes or on component unmount
+    return () => {
+      socket.off('lobbyUpdate', onLobbyUpdate);
+      socket.off('revealRoles', onRevealRoles);
+      socket.off('goToGame', onGoToGame);
+      console.log(`Leaving lobby: ${joinedLobbyCode} as player ${playerId}`);
+      socket.emit('leaveLobby', { lobbyCode: joinedLobbyCode, playerId });
+      
+      // Reset UI states only if we are leaving lobby screen explicitly
+      // but we avoid resetting here to keep UI stable during transitions
+    };
+  }, [joinedLobbyCode, playerId, username, currentScreen]);
+
+  // Join lobby button handler
   const handleJoinClick = () => {
-    if (!/^[A-Z0-9]{6}$/.test(inputLobbyCode)) {
+    const code = inputLobbyCode.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
       alert('Please enter a valid 6-character lobby code.');
       return;
     }
-    setJoinedLobbyCode(inputLobbyCode.toUpperCase());
+    setJoinedLobbyCode(code);
   };
 
+  // Leave lobby button handler
   const handleLeaveLobby = () => {
     setJoinedLobbyCode('');
     setPlayers([]);
+    setMyRole(null);
     setCurrentScreen('join');
   };
 
-  // Render join lobby input form
+  // ---- UI Rendering ----
+
   if (currentScreen === 'join') {
     return (
       <div style={styles.container}>
@@ -100,7 +144,6 @@ export default function Joinlobby() {
     );
   }
 
-  // Render lobby screen before game starts
   if (currentScreen === 'lobby') {
     return (
       <div style={styles.container}>
@@ -130,7 +173,6 @@ export default function Joinlobby() {
     );
   }
 
-  // Render Reveal component in reveal phase
   if (currentScreen === 'reveal') {
     return (
       <Reveal
@@ -143,7 +185,6 @@ export default function Joinlobby() {
     );
   }
 
-  // Render Game component
   if (currentScreen === 'game') {
     return (
       <Game
@@ -155,11 +196,11 @@ export default function Joinlobby() {
     );
   }
 
-  // Fallback (should not happen)
   return null;
 }
 
-// Styles - same as your existing
+
+// ---- Styles ----
 const styles = {
   container: {
     minHeight: '100vh',
