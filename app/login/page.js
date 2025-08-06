@@ -1,7 +1,7 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import './login.css'
+import "./login.css";
 import { useUser } from "@/app/context/UserContext";
 
 export default function LoginPage() {
@@ -9,8 +9,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const { setUser } = useUser();
+  const { user, setUser } = useUser();
   const router = useRouter();
+
+  // Redirect immediately if user is already logged in
+  useEffect(() => {
+    if (user && user.username) {
+      router.push("/play");
+    }
+  }, [user, router]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -27,7 +34,7 @@ export default function LoginPage() {
         setUser({ username: data.username, email: data.email || emailOrUsername });
         setMessage("Login successful!");
         setTimeout(() => {
-          router.push("/play"); // Redirect to play page or home page
+          router.push("/play"); // Redirect after login
         }, 1000);
       } else {
         setMessage(data.error || "Login failed");
@@ -66,7 +73,10 @@ export default function LoginPage() {
         {message && (
           <p
             style={{
-              color: message.toLowerCase().includes("error") || message.toLowerCase().includes("failed") ? "#f39c12" : "#00bfff",
+              color:
+                message.toLowerCase().includes("error") || message.toLowerCase().includes("failed")
+                  ? "#f39c12"
+                  : "#00bfff",
               marginTop: "1rem",
               fontWeight: "600",
               textAlign: "center",
