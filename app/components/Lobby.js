@@ -4,16 +4,17 @@ import { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { nanoid } from 'nanoid';
 import ChatBox from './ChatBox';
+import Reveal from './Reveal';  // Import Reveal component here
 
-const SOCKET_URL = 'https://server-field-agents.onrender.com'; // your deployed server in production
+const SOCKET_URL = 'https://server-field-agents.onrender.com'; // your deployed server URL
 
 export default function Lobby() {
   const [lobbyCode, setLobbyCode] = useState('');
   const [players, setPlayers] = useState([]);
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(false);  // Controls whether Reveal is shown
 
   const username = typeof window !== 'undefined'
-    ? (JSON.parse((localStorage.getItem('fieldAgentsUser'))).username || 'Agent')
+    ? (JSON.parse(localStorage.getItem('fieldAgentsUser'))?.username || 'Agent')
     : 'Agent';
 
   const playerId = typeof window !== 'undefined'
@@ -22,7 +23,6 @@ export default function Lobby() {
 
   const socketRef = useRef(null);
 
-  // Initialize lobby code once on mount
   useEffect(() => {
     const code = nanoid(6).toUpperCase();
     setLobbyCode(code);
@@ -31,26 +31,21 @@ export default function Lobby() {
   useEffect(() => {
     if (!lobbyCode || !playerId || !username) return;
 
-    // Create single socket instance and store in ref
     const socket = io(SOCKET_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
-    // Upon connection, create lobby with current player info
     socket.on('connect', () => {
       socket.emit('createLobby', { lobbyCode, player: { id: playerId, name: username } });
     });
 
-    // Update players list on lobby updates
     socket.on('lobbyUpdate', (lobby) => {
       setPlayers(lobby.players || []);
     });
 
-    // Listen for moving players and log coordinates
     socket.on('playerMoved', (data) => {
       console.log(`[From playerMoved] Player ${data.player.name} moved to:`, data.coordinates);
     });
 
-    // Start geolocation watcher and emit position updates
     let watcherId;
     if ('geolocation' in navigator) {
       watcherId = navigator.geolocation.watchPosition(
@@ -71,7 +66,7 @@ export default function Lobby() {
       );
     }
 
-    // Clean up watcher and socket on unmount
+    // Cleanup
     return () => {
       if (watcherId) navigator.geolocation.clearWatch(watcherId);
       if (socketRef.current) {
@@ -81,53 +76,64 @@ export default function Lobby() {
     };
   }, [lobbyCode, playerId, username]);
 
-  // You don't need to define sendMessage or setMessages here — ChatBox handles chat
+
+  // Handler for Start button click
+  const handleStartClick = () => {
+    // You can emit 'startGame' here if needed
+    if (socketRef.current) {
+      socketRef.current.emit('startGame', { lobbyCode });
+    }
+    // Show Reveal screen
+    setStarted(true);
+  };
+
 
   return (
     <div style={styles.container}>
-      <header style={styles.header}>
-        <h1>Lobby</h1>
-        <div style={styles.playerCount}>{players.length} / 10</div>
-      </header>
+      {!started ? (
+        <>
+          <header style={styles.header}>
+            <h1>Lobby</h1>
+            <div style={styles.playerCount}>{players.length} / 10</div>
+          </header>
 
-      {/* Pass current lobby info and user info to ChatBox */}
-      <ChatBox lobbyCode={lobbyCode} username={username} playerId={playerId} />
+          <ChatBox lobbyCode={lobbyCode} username={username} playerId={playerId} />
 
-      <div style={styles.lobbyCodeContainer}>
-        <span style={styles.lobbyCodeLabel}>Lobby Code:</span>
-        <span style={styles.lobbyCode}>{lobbyCode}</span>
-      </div>
+          <div style={styles.lobbyCodeContainer}>
+            <span style={styles.lobbyCodeLabel}>Lobby Code:</span>
+            <span style={styles.lobbyCode}>{lobbyCode}</span>
+          </div>
 
-      <div style={styles.infoBox}>
-        <div style={{ marginBottom: 20 }}>Share this code with your friends so they can join!</div>
-        <ul style={styles.playerList}>
-          {players.map((p, i) => (
-            // p.name is a plain string — no JSON.parse needed
-            <li key={i} style={styles.playerItem}>{p.name}</li>
-          ))}
-        </ul>
-      </div>
+          <div style={styles.infoBox}>
+            <div style={{ marginBottom: 20 }}>Share this code with your friends so they can join!</div>
+            <ul style={styles.playerList}>
+              {players.map((p, i) => (
+                <li key={i} style={styles.playerItem}>{p.name}</li>
+              ))}
+            </ul>
+          </div>
 
-      <button
-        style={{
-          ...styles.startButton,
-          opacity: players.length < 2 ? 0.5 : 1,
-          cursor: players.length < 2 ? 'not-allowed' : 'pointer',
-        }}
-        disabled={players.length < 2}
-        onClick={() => setStarted(true)}
-      >
-        Start Game
-      </button>
-
-      {started && (
-        <div style={styles.startedPanel}>
-          <h2>Game Started!</h2>
-        </div>
+          <button
+            style={{
+              ...styles.startButton,
+              opacity: players.length < 2 ? 0.5 : 1,
+              cursor: players.length < 2 ? 'not-allowed' : 'pointer',
+            }}
+            disabled={players.length < 2}
+            onClick={handleStartClick}
+          >
+            Start Game
+          </button>
+        </>
+      ) : (
+        // Render Reveal component instead when started
+        <Reveal lobbyCode={lobbyCode} playerId={playerId} username={username} />
       )}
     </div>
   );
 }
+
+// ...styles unchanged as you provided
 
 
 const styles = {

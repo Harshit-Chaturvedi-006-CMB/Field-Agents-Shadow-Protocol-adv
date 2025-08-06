@@ -65,7 +65,7 @@ export default function Joinlobby() {
           <div style={{ marginBottom: 20 }}>Players in Lobby:</div>
           <ul style={styles.playerList}>
             {players.map((p, i) => (
-              <li key={i} style={styles.playerItem}>{username}</li>
+              <li key={i} style={styles.playerItem}>{p.name}</li>
             ))}
           </ul>
         </div>
