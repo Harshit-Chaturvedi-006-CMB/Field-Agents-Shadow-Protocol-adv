@@ -11,7 +11,7 @@ export default function Game({ socket, lobbyCode, playerId, username }) {
     // Listen for lobby updates (player info) during the game
     const handleLobbyUpdate = (lobby) => {
       setPlayers(lobby.players || []);
-    };
+    }; 
 
     socket.on('lobbyUpdate', handleLobbyUpdate);
 
