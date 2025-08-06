@@ -3,7 +3,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import ShowCord from '@/components/showcord';
-import PlayerMap from '@/components/PhasorMap';
+import dynamic from 'next/dynamic';
+
+// Dynamic loading so leaflet/react-leaflet never runs during SSR
+const PlayerMap = dynamic(() => import('@/components/PhasorMap'), { 
+  ssr: false 
+});
+
 
 const SOCKET_URL = 'https://server-field-agents.onrender.com'; // Your socket server URL
 
