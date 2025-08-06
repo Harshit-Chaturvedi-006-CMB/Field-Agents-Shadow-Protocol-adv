@@ -1,14 +1,15 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = 'https://server-field-agents.onrender.com';
+const SOCKET_URL = 'https://server-field-agents.onrender.com'; // Your socket server URL
 
-export default function LobbyPage() {
-  const router = useRouter();
-  const [lobbyCode, setLobbyCode] = useState('ABC123'); // set dynamically as needed
+export default function GamePage() {
+  const lobbyCode = 'ABC123';     // replace with actual lobby code from props/state
+  const playerId = 'player1';     // replace with actual user ID
+  const username = 'Agent Smith'; // replace with actual user name
+
   const [players, setPlayers] = useState([]);
   const socketRef = useRef(null);
 
@@ -16,40 +17,68 @@ export default function LobbyPage() {
     const socket = io(SOCKET_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
-    // Join lobby and handle updates
-    socket.emit('joinLobby', { lobbyCode, player: { id: 'player1', name: 'Agent Smith' } });
+    socket.emit('joinLobby', { lobbyCode, player: { id: playerId, name: username } });
 
     socket.on('lobbyUpdate', (lobby) => {
       setPlayers(lobby.players || []);
     });
 
-    return () => {
-      socket.disconnect();
-    };
-  }, [lobbyCode]);
+    socket.on('playerMoved', ({ player, coordinates }) => {
+      setPlayers((prevPlayers) => {
+        const idx = prevPlayers.findIndex((p) => p.id === player.id);
+        if (idx !== -1) {
+          const updated = [...prevPlayers];
+          updated[idx] = { ...updated[idx], coordinates };
+          return updated;
+        }
+        return prevPlayers;
+      });
+    });
 
-  const handleStartGame = () => {
-    if (socketRef.current) {
-      socketRef.current.emit('startGame', { lobbyCode });
+    // Start watching user geolocation and log coordinates each time user moves
+    let watcherId;
+    if ('geolocation' in navigator) {
+      watcherId = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          console.log('My current position:', { lat: latitude, long: longitude });
+
+          // Optionally emit user's move to server
+          if (socket.connected) {
+            socket.emit('playerMove', {
+              lobbyCode,
+              player: { id: playerId, name: username },
+              coordinates: {
+                lat: latitude,
+                long: longitude,
+              },
+            });
+          }
+        },
+        (error) => {
+          console.error('Error getting position:', error);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 10000,
+        }
+      );
+    } else {
+      console.warn('Geolocation API is not available in your browser.');
     }
-    // Navigate to Reveal page
-    router.push('/reveal');
-  };
+
+    return () => {
+      if (watcherId !== undefined) navigator.geolocation.clearWatch(watcherId);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [lobbyCode, playerId, username]);
 
   return (
     <div>
-      <h1>Lobby</h1>
-      <div>Lobby Code: {lobbyCode}</div>
-      <h2>Players:</h2>
-      <ul>
-        {players.map((p) => (
-          <li key={p.id}>{p.name}</li>
-        ))}
-      </ul>
-
-      <button disabled={players.length < 2} onClick={handleStartGame}>
-        Start Game
-      </button>
+      <h1>Game Page</h1>
+      {/* Render player list or game UI here */}
     </div>
   );
 }
